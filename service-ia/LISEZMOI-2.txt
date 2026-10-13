@@ -1,0 +1,26 @@
+CORRECTEUR AYH - INSTALLATION
+
+A. Obtenir la clé de l'IA
+Option gratuite (Google Gemini) :
+1. Va sur aistudio.google.com/app/apikey, connecte-toi avec un compte Google.
+2. "Create API key" (créer une clé API), puis copie la clé.
+Option payante (Claude) : console.anthropic.com, achat de crédits, puis API Keys.
+
+B. Créer le service IA partagé (une seule fois)
+1. Sur dash.cloudflare.com (compte gratuit) : Workers et Pages > Créer > Worker > Déployer.
+2. Modifier le code : remplace tout par le contenu de worker.js > Déployer.
+3. Paramètres > Variables et secrets : ajoute (type Secret)
+   - GEMINI_API_KEY = ta clé Gemini  (ou ANTHROPIC_API_KEY si tu utilises Claude)
+   - ACCESS_CODES = un ou plusieurs codes d'accès inventés par toi, séparés par des virgules
+4. Déployer. Note l'adresse du Worker (https://NOM.TON-COMPTE.workers.dev).
+
+C. Héberger l'application
+Mets index.html, manifest.webmanifest, sw.js, icon-192.png et icon-512.png à la racine d'un dépôt GitHub (GitHub Pages) ou sur Netlify.
+
+D. Installer et configurer
+1. Ouvre l'adresse de l'application dans Chrome > menu > Installer l'application.
+2. Menu > Réglages de l'IA > adresse du Worker + code d'accès > Enregistrer > Tester l'IA maintenant.
+3. Autre appareil : "Copier le lien de configuration", envoie-le, l'enseignant l'ouvre et installe l'application.
+
+Pour couper l'accès à quelqu'un : change ou retire son code dans ACCESS_CODES.
+Attention : avec le quota gratuit de Gemini, ne pas envoyer de données sensibles (le contenu peut servir à améliorer les produits de Google).
