@@ -3,7 +3,7 @@
 // Variables à créer dans Cloudflare (type Secret) :
 //   GEMINI_API_KEY  (ou ANTHROPIC_API_KEY)
 //   ACCESS_CODES    (codes d'accès séparés par des virgules)
-// Facultatif : GEMINI_MODEL (par défaut gemini-2.5-flash), MODEL (modèle Claude).
+// Facultatif : GEMINI_MODEL (par défaut gemini-2.5-flash ; ex. gemini-3.8-flash), GEMINI_THINKING (low, medium ou high, modèles 3.x), MODEL (modèle Claude).
 const clean = v => String(v || '').trim().replace(/^["']|["']$/g, '');
 
 async function gemini(b, key, env, json) {
@@ -16,12 +16,17 @@ async function gemini(b, key, env, json) {
     }
   }
   const model = clean(env.GEMINI_MODEL) || 'gemini-2.5-flash';
+  const g3 = /gemini-3/i.test(model);
+  // Gemini 3.x : on laisse la température par défaut (recommandé par Google) et on prévoit plus de place pour la réflexion.
+  const gc = g3 ? { maxOutputTokens: 16384 } : { maxOutputTokens: 8192, temperature: 0.2 };
+  const lvl = clean(env.GEMINI_THINKING).toLowerCase();
+  if (g3 && /^(low|medium|high)$/.test(lvl)) gc.thinkingConfig = { thinkingLevel: lvl };
   const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
       contents: [{ role: 'user', parts }],
-      generationConfig: { maxOutputTokens: 8192, temperature: 0.2 }
+      generationConfig: gc
     })
   });
   let j = {};
