@@ -3,7 +3,7 @@
 // Variables à créer dans Cloudflare (type Secret) :
 //   GEMINI_API_KEY  (ou ANTHROPIC_API_KEY)
 //   ACCESS_CODES    (codes d'accès séparés par des virgules)
-// Facultatif : GEMINI_MODEL (par défaut gemini-2.5-flash ; ex. gemini-3.8-flash), GEMINI_THINKING (low, medium ou high, modèles 3.x), MODEL (modèle Claude).
+// Facultatif : GEMINI_MODEL (par défaut gemini-3.5-flash-lite), GEMINI_THINKING (low, medium ou high, modèles 3.x), MODEL (modèle Claude).
 const clean = v => String(v || '').trim().replace(/^["']|["']$/g, '');
 
 async function gemini(b, key, env, json) {
@@ -15,7 +15,7 @@ async function gemini(b, key, env, json) {
       else if (p.type === 'image' && p.source) parts.push({ inline_data: { mime_type: p.source.media_type || 'image/jpeg', data: p.source.data } });
     }
   }
-  const model = clean(env.GEMINI_MODEL) || 'gemini-2.5-flash';
+  const model = clean(env.GEMINI_MODEL) || 'gemini-3.5-flash-lite';
   const g3 = /gemini-3/i.test(model);
   // Gemini 3.x : on laisse la température par défaut (recommandé par Google) et on prévoit plus de place pour la réflexion.
   const gc = g3 ? { maxOutputTokens: 16384 } : { maxOutputTokens: 8192, temperature: 0.2 };
