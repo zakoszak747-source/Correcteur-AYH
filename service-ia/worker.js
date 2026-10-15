@@ -80,7 +80,7 @@ async function gemini(b, key, env, json) {
     const c = typeof m.content === 'string' ? [{ type: 'text', text: m.content }] : (m.content || []);
     for (const p of c) {
       if (p.type === 'text') parts.push({ text: p.text });
-      else if (p.type === 'image' && p.source) parts.push({ inline_data: { mime_type: p.source.media_type || 'image/jpeg', data: p.source.data } });
+      else if ((p.type === 'image' || p.type === 'document') && p.source) parts.push({ inline_data: { mime_type: p.source.media_type || (p.type === 'document' ? 'application/pdf' : 'image/jpeg'), data: p.source.data } });
     }
   }
   const model = clean(env.GEMINI_MODEL) || 'gemini-3.5-flash-lite';
