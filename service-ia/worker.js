@@ -32,10 +32,17 @@ async function resolve(env, code) {
       let r = {}; try { r = JSON.parse(raw); } catch (e) {}
       if (r.o) return { err: 'abonnement suspendu' };
       if (r.e && r.e < today()) return { err: 'abonnement expiré', exp: r.e };
-      return { ent: { code, limit: r.l || 0, exp: r.e || '', nom: r.n || '' } };
+      return { ent: { code, limit: r.l || 0, exp: r.e || '', nom: r.n || '', p: r.p || '' } };
     }
   }
   return { err: 'code refusé' };
+}
+
+const DEF_PLANS = { mensuel: { nom: 'Mensuel', prix: 1500, jours: 30, quota: 60 }, annuel: { nom: 'Annuel', prix: 15000, jours: 365, quota: 45 } };
+async function getPlans(env) {
+  let p = {};
+  if (env.QUOTA) { const raw = await env.QUOTA.get('cfg:plans'); if (raw) { try { p = JSON.parse(raw); } catch (e) {} } }
+  return { mensuel: { ...DEF_PLANS.mensuel, ...(p.mensuel || {}) }, annuel: { ...DEF_PLANS.annuel, ...(p.annuel || {}) } };
 }
 
 async function admin(req, env, json) {
@@ -44,14 +51,29 @@ async function admin(req, env, json) {
   let b = {}; try { b = await req.json(); } catch (e) {}
   const read = async code => { const raw = await env.QUOTA.get('s:' + code); if (!raw) return null; try { return JSON.parse(raw); } catch (e) { return null; } };
   const save = (code, r) => env.QUOTA.put('s:' + code, JSON.stringify(r));
+  const int = (v, d) => { const n = parseInt(v); return Number.isFinite(n) && n >= 0 ? n : d; };
+  const plans = await getPlans(env);
+  if (b.op === 'plans') return json({ plans }, 200);
+  if (b.op === 'setplans') {
+    const out = {};
+    for (const k of ['mensuel', 'annuel']) {
+      const p = (b.plans || {})[k] || {};
+      out[k] = { nom: plans[k].nom, prix: int(p.prix, plans[k].prix), jours: Math.min(Math.max(int(p.jours, plans[k].jours), 1), 3650), quota: int(p.quota, plans[k].quota) };
+    }
+    await env.QUOTA.put('cfg:plans', JSON.stringify(out));
+    return json({ plans: out }, 200);
+  }
   if (b.op === 'create') {
     let code = /^[A-Za-z0-9_-]{4,40}$/.test(b.code || '') ? b.code : '';
     if (!code) { for (let i = 0; i < 6; i++) { const c = gen(); if (!(await read(c))) { code = c; break; } } }
     if (!code) return json({ error: 'création impossible, réessaie' }, 500);
-    const j = Math.min(Math.max(parseInt(b.j) || 30, 1), 3650), l = Math.max(parseInt(b.l) || 0, 0);
-    const rec = { n: String(b.n || '').slice(0, 60), l, e: addDays(today(), j), c: today(), o: 0 };
+    const pk = plans[b.plan] ? b.plan : 'mensuel', pl = plans[pk];
+    const j = b.plan ? pl.jours : Math.min(Math.max(int(b.j, 30), 1), 3650);
+    const l = b.plan ? pl.quota : int(b.l, 0);
+    const f = int(b.f, pl.prix);
+    const rec = { n: String(b.n || '').slice(0, 60), tel: String(b.tel || '').replace(/[^0-9+]/g, '').slice(0, 20), p: b.plan ? pk : '', l, e: addDays(today(), j), c: today(), o: 0, pay: b.plan ? [{ d: today(), f, m: String(b.m || '').slice(0, 20), p: pk }] : [] };
     await save(code, rec);
-    return json({ code, exp: rec.e, l }, 200);
+    return json({ code, exp: rec.e, l, plan: b.plan ? pl.nom : '', prix: b.plan ? pl.prix : 0, f }, 200);
   }
   if (b.op === 'list') {
     const items = []; let cursor;
@@ -60,14 +82,22 @@ async function admin(req, env, json) {
       for (const k of r.keys) { const code = k.name.slice(2), rec = await read(code); if (rec) items.push({ code, ...rec, used: await usedOf(env, code) }); }
       if (r.list_complete) break; cursor = r.cursor;
     }
-    return json({ items }, 200);
+    return json({ items, plans }, 200);
   }
   const code = String(b.code || ''), rec = await read(code);
   if (!rec) return json({ error: 'code introuvable' }, 404);
   if (b.op === 'renew') {
-    const j = Math.min(Math.max(parseInt(b.j) || 30, 1), 3650), base = rec.e && rec.e > today() ? rec.e : today();
-    rec.e = addDays(base, j); rec.o = 0; if (b.l != null && parseInt(b.l) >= 0) rec.l = parseInt(b.l);
-    await save(code, rec); return json({ ok: 1, exp: rec.e }, 200);
+    const base = rec.e && rec.e > today() ? rec.e : today();
+    if (b.plan && plans[b.plan]) {
+      const pl = plans[b.plan];
+      rec.e = addDays(base, pl.jours); rec.p = b.plan; rec.l = pl.quota; rec.o = 0;
+      rec.pay = Array.isArray(rec.pay) ? rec.pay : [];
+      if (!b.nopay) rec.pay.push({ d: today(), f: int(b.f, pl.prix), m: String(b.m || '').slice(0, 20), p: b.plan });
+    } else {
+      const j = Math.min(Math.max(int(b.j, 30), 1), 3650);
+      rec.e = addDays(base, j); rec.o = 0; if (b.l != null && int(b.l, -1) >= 0) rec.l = int(b.l, rec.l);
+    }
+    await save(code, rec); return json({ ok: 1, exp: rec.e, plan: rec.p }, 200);
   }
   if (b.op === 'off') { rec.o = b.o ? 1 : 0; await save(code, rec); return json({ ok: 1 }, 200); }
   if (b.op === 'del') { await env.QUOTA.delete('s:' + code); return json({ ok: 1 }, 200); }
@@ -133,7 +163,8 @@ export default {
       if (!code) return new Response('Service IA AYH : en ligne', { headers: cors });
       const r = await resolve(env, code);
       if (r.err) return json({ error: r.err, exp: r.exp }, r.err === 'code refusé' ? 401 : 402);
-      return json({ used: await usedOf(env, code), limit: r.ent.limit, exp: r.ent.exp, nom: r.ent.nom, month: month() }, 200);
+      const pl = r.ent.p ? (await getPlans(env))[r.ent.p] : null;
+      return json({ used: await usedOf(env, code), limit: r.ent.limit, exp: r.ent.exp, nom: r.ent.nom, month: month(), plan: pl ? pl.nom : '', prix: pl ? pl.prix : 0 }, 200);
     }
     if (req.method !== 'POST') return new Response('Méthode non autorisée', { status: 405, headers: cors });
     const rs = await resolve(env, code);
